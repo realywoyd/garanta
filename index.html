@@ -57,6 +57,10 @@
         .modal.active {
             display: flex;
         }
+        .chat-container {
+            max-height: 300px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body class="gradient-bg text-white font-montserrat">
@@ -104,6 +108,19 @@
             <h2 class="text-2xl font-bold mb-4">Мои сделки</h2>
             <div id="deal-list" class="space-y-4"></div>
             <button class="neon-button bg-black border-2 border-pink-500 text-pink-500 p-2 rounded mt-4" onclick="closeModal('deals')">Закрыть</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно чата -->
+    <div id="chat" class="modal fixed inset-0 bg-black bg-opacity-80 items-center justify-center">
+        <div class="bg-gray-900 p-6 rounded-lg border-2 border-cyan-500 w-11/12 max-w-md hologram">
+            <h2 class="text-2xl font-bold mb-4">Чат сделки</h2>
+            <div id="chat-messages" class="chat-container bg-gray-800 p-4 rounded-lg mb-4"></div>
+            <input id="chat-input" type="text" placeholder="Сообщение..." class="w-full p-2 bg-gray-800 border border-cyan-500 rounded mb-4 text-white">
+            <div class="flex justify-end gap-2">
+                <button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded" onclick="sendMessage()">Отправить</button>
+                <button class="neon-button bg-black border-2 border-pink-500 text-pink-500 p-2 rounded" onclick="closeModal('chat')">Закрыть</button>
+            </div>
         </div>
     </div>
 
@@ -217,7 +234,8 @@
         document.querySelectorAll('.neon-button').forEach(btn => btn.addEventListener('click', vibrate));
 
         // Управление модальными окнами
-        function showModal(id) {
+        let currentChatDealId = null;
+        function showModal(id, dealId = null) {
             document.querySelectorAll('.modal').forEach(modal => modal.classList.remove('active'));
             const modal = document.getElementById(id);
             if (modal) {
@@ -226,6 +244,10 @@
                 if (id === 'deals') loadDeals();
                 if (id === 'profile') loadProfile();
                 if (id === 'admin-panel') loadAdminPanel();
+                if (id === 'chat') {
+                    currentChatDealId = dealId;
+                    loadChat(dealId);
+                }
             }
         }
 
@@ -264,7 +286,7 @@
                 price: parseFloat(price),
                 currency,
                 sellerId: tg.initDataUnsafe.user.id,
-                buyerId: partner, // Мок: партнер как ID
+                buyerId: partner,
                 status: 'created',
                 createdAt: new Date().toISOString(),
                 paymentProof: null
@@ -293,7 +315,7 @@
                         <button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded" onclick="submitPaymentProof(${index}, '${deal.id}')">Отправить чек</button>
                     `;
                 } else if (isSeller && deal.status === 'payment_verified') {
-                    actions = `<button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded" onclick="transferGoods(${index})">Передать товар</button>`;
+                    actions = `<button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded" onclick="showModal('chat', ${deal.id})">Передать товар в чате</button>`;
                 } else if (isBuyer && deal.status === 'goods_transferred') {
                     actions = `<button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded" onclick="confirmGoods(${index})">Подтвердить получение</button>`;
                 } else if (isSeller && deal.status === 'buyer_confirmed') {
@@ -311,6 +333,7 @@
                         <p><strong>Статус:</strong> ${getStatusText(deal.status)}</p>
                         ${deal.paymentProof ? `<p><strong>Чек:</strong> ${deal.paymentProof}</p>` : ''}
                         <p><strong>Дата:</strong> ${new Date(deal.createdAt).toLocaleString()}</p>
+                        <button class="neon-button bg-black border-2 border-purple-500 text-purple-500 p-2 rounded mt-2" onclick="showModal('chat', ${deal.id})">Открыть чат</button>
                         ${actions}
                     </div>
                 `;
@@ -405,6 +428,51 @@
                 tg.showAlert('Сделка отменена!');
                 loadDeals();
             }
+        }
+
+        // Загрузка чата
+        function loadChat(dealId) {
+            const deals = JSON.parse(localStorage.getItem('deals') || '[]');
+            const deal = deals.find(d => d.id === dealId);
+            if (!deal || (deal.sellerId !== tg.initDataUnsafe.user.id && deal.buyerId !== `@${tg.initDataUnsafe.user.username}`)) {
+                tg.showAlert('Доступ к чату запрещен!');
+                closeModal('chat');
+                return;
+            }
+            const chatMessages = document.getElementById('chat-messages');
+            const dealChats = JSON.parse(localStorage.getItem('dealChats') || '{}');
+            const messages = dealChats[dealId] || [];
+            chatMessages.innerHTML = messages.map(msg => `
+                <div class="p-2 mb-2 rounded-lg ${msg.senderId === tg.initDataUnsafe.user.id ? 'bg-blue-600 text-white ml-auto' : 'bg-gray-600 text-white'}">
+                    <p><strong>${msg.senderId === deal.sellerId ? 'Продавец' : 'Покупатель'}:</strong> ${msg.text}</p>
+                    <p class="text-xs text-gray-300">${new Date(msg.timestamp).toLocaleString()}</p>
+                </div>
+            `).join('');
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Отправка сообщения в чат
+        function sendMessage() {
+            const text = document.getElementById('text-message').value;
+            if (!text) {
+                tg.showAlert('Введите сообщение!');
+                return;
+            }
+            const deals = JSON.parse(localStorage.getItem('deals') || '[]');
+            const deal = deals.find(d => d.id === currentChatId);
+            if (!deal || (deal.sellerId !== tg.initDataUnsafe.user.id && deal.buyerId !== `@${tg.initDataUnsafe.user.username}`)) {
+                return;
+            }
+            const dealChats = JSON.parse(localStorage.getItem('dealChats') || '{}');
+            if (!dealChats[currentChatId]) dealChats[currentChatId] = [];
+            dealChats[currentChatId].push({
+                senderId: tg.initDataUnsafe.user.id,
+                text,
+                timestamp: new Date().toISOString()
+            });
+            localStorage.setItem('dealChats', JSON.stringify(dealChats));
+            document.getElementById('text-message').value = '';
+            loadChat(currentChatId);
         }
 
         // Загрузка админ-панели
