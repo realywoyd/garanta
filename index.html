@@ -36,7 +36,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            z-index: -1;
+            z-index: 0;
         }
         canvas {
             width: 100%;
@@ -49,6 +49,13 @@
         }
         @keyframes hologramFade {
             to { opacity: 1; transform: translateY(0); }
+        }
+        .modal {
+            z-index: 1000;
+            display: none;
+        }
+        .modal.active {
+            display: flex;
         }
     </style>
 </head>
@@ -65,11 +72,7 @@
         </div>
         <div class="mt-6">
             <h2 class="text-2xl font-semibold mb-2 hologram">Акции</h2>
-            <div class="bg-gray-800 p-4 rounded-full animate-pulse">🔥 1% комиссия на аккаунты RF Online!</div>
-        </div>
-        <div class="mt-4">
-            <h2 class="text-2xl font-semibold mb-4 hologram">Топ-2 товара</h2>
-            <div id="top-items" class="grid grid-cols-1 gap-4"></div>
+            <div class="bg-gray-800 p-4 rounded-lg animate-pulse hologram">🔥 1% комиссия на аккаунты RF Online!</div>
         </div>
         <div class="mt-6">
             <h2 class="text-2xl font-semibold mb-2 hologram">Новости</h2>
@@ -78,8 +81,8 @@
     </div>
 
     <!-- Модальное окно создания сделки -->
-    <div id="create-deal" class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center z-1000">
-        <div class="bg-gray-900 p-6 rounded-lg border-2 border-pink-600 w-11/12 max-w-md hologram">
+    <div id="create-deal" class="modal fixed inset-0 bg-black bg-opacity-80 items-center justify-center">
+        <div class="bg-gray-900 p-6 rounded-lg border-2 border-pink-500 w-11/12 max-w-md hologram">
             <h2 class="text-2xl font-bold mb-4">Создать сделку</h2>
             <input id="deal-item" type="text" placeholder="Товар (напр., Bellato Sword +7)" class="w-full p-2 bg-gray-800 border border-cyan-500 rounded mb-4 text-white">
             <input id="deal-price" type="number" placeholder="Цена" step="0.01" class="w-full p-2 bg-gray-800 border border-cyan-500 rounded mb-4 text-white">
@@ -96,8 +99,8 @@
     </div>
 
     <!-- Модальное окно мои сделки -->
-    <div id="deals" class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center z-1000">
-        <div class="bg-gray-900 p-6 rounded-lg border-2 border-pink-600 w-11/12 max-w-md hologram">
+    <div id="deals" class="modal fixed inset-0 bg-black bg-opacity-80 items-center justify-center">
+        <div class="bg-gray-900 p-6 rounded-lg border-2 border-pink-500 w-11/12 max-w-md hologram">
             <h2 class="text-2xl font-bold mb-4">Мои сделки</h2>
             <div id="deal-list" class="space-y-4"></div>
             <button class="neon-button bg-black border-2 border-pink-500 text-pink-500 p-2 rounded mt-4" onclick="closeModal('deals')">Закрыть</button>
@@ -105,7 +108,7 @@
     </div>
 
     <!-- Модальное окно профиля -->
-    <div id="profile" class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center z-1000">
+    <div id="profile" class="modal fixed inset-0 bg-black bg-opacity-80 items-center justify-center">
         <div class="bg-gray-900 p-6 rounded-lg border-2 border-cyan-500 w-11/12 max-w-md hologram">
             <h2 class="text-2xl font-bold mb-4">Профиль</h2>
             <div class="flex items-center mb-4">
@@ -119,7 +122,7 @@
             <p>Достижения:</p>
             <div id="achievements" class="grid grid-cols-3 gap-2 mb-4"></div>
             <p>Отзывы:</p>
-            <div id="reviews" class="space-y-2 mb-4"></div>
+            <div id="reviews" class="space-y-2 mb-4">Нет отзывов</div>
             <div class="flex justify-end gap-2">
                 <button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded" onclick="closeModal('profile')">Закрыть</button>
             </div>
@@ -127,7 +130,7 @@
     </div>
 
     <!-- Модальное окно поддержки -->
-    <div id="support" class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center z-1000">
+    <div id="support" class="modal fixed inset-0 bg-black bg-opacity-80 items-center justify-center">
         <div class="bg-gray-900 p-6 rounded-lg border-2 border-green-500 w-11/12 max-w-md hologram">
             <h2 class="text-2xl font-bold mb-4">Поддержка</h2>
             <textarea id="support-message" placeholder="Опишите проблему..." class="w-full p-2 bg-gray-800 border border-cyan-500 rounded mb-4 text-white"></textarea>
@@ -152,22 +155,11 @@
         const mockProfile = {
             username: tg.initDataUnsafe.user.username || "Аноним",
             rating: "★★★★★",
-            achievements: ["Новичок", "RF-торговец"],
-            reviews: [
-                { rating: 5, text: "Отличный сервис для RF Online!", reply: "Спасибо!", timestamp: new Date().toISOString() },
-                { rating: 4, text: "Быстро, но чат глючил", reply: "Исправили, попробуйте снова!", timestamp: new Date().toISOString() }
-            ]
+            achievements: ["Новичок", "RF-торговец"]
         };
-
-        // Мок-данные для топ-товаров
-        const mockTopItems = [
-            { name: "Аккаунт Bellato 65", price: 4000.0, currency: "₽" },
-            { name: "100000 CP", price: 1000.0, currency: "₽" }
-        ];
 
         // Мок-данные для новостей
         const mockNews = [
-            { text: "@CyberTrader продал аккаунт RF Online за 5000₽!" },
             { text: "Новая акция: 1% комиссия на игровые ценности!" }
         ];
 
@@ -198,9 +190,10 @@
 
         // Управление модальными окнами
         function showModal(id) {
+            document.querySelectorAll('.modal').forEach(modal => modal.classList.remove('active'));
             const modal = document.getElementById(id);
             if (modal) {
-                modal.style.display = 'flex';
+                modal.classList.add('active');
                 gsap.from(`#${id} .hologram`, { opacity: 0, y: 20, stagger: 0.1 });
                 if (id === 'deals') loadDeals();
                 if (id === 'profile') loadProfile();
@@ -214,7 +207,7 @@
                     opacity: 0,
                     y: 20,
                     stagger: 0.1,
-                    onComplete: () => modal.style.display = 'none'
+                    onComplete: () => modal.classList.remove('active')
                 });
             }
         }
@@ -237,7 +230,7 @@
 
             // Сохранение сделки в localStorage
             const deal = {
-                id: Date.now(), // Уникальный ID
+                id: Date.now(),
                 item,
                 price: parseFloat(price),
                 currency,
@@ -266,7 +259,7 @@
                     <p><strong>Статус:</strong> ${deal.status}</p>
                     <p><strong>Дата:</strong> ${new Date(deal.createdAt).toLocaleString()}</p>
                     <button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded mt-2"
-                        onclick="toggleDealStatus(${index})">${deal.status === 'active' ? 'Завершить' : 'Активировать'}</button>
+                        onclick="toggleDealStatus(${index})">${deal.status === 'Активна' ? 'Завершить' : 'Активировать'}</button>
                 </div>
             `).join('') : '<p class="hologram text-center">Сделок нет</p>';
         }
@@ -285,23 +278,17 @@
         function loadProfile() {
             document.getElementById('user-name').innerText = mockProfile.username;
             document.getElementById('user-rating').innerText = mockProfile.rating;
-            document.getElementById('avatar').style.backgroundImage = `url('${tg.initDataUnsafe.user.photo_url || 'https://via.placeholder.com/64'}')`;
+            document.getElementById('avatar').style.backgroundImage = `url(${tg.initDataUnsafe.user.photo_url || 'https://via.placeholder.com/64'})`;
             document.getElementById('achievements').innerHTML = mockProfile.achievements.map(a => `
                 <div class="bg-gray-800 p-2 rounded hologram">${a}</div>
             `).join('');
-            document.getElementById('reviews').innerHTML = mockProfile.reviews.map(r => `
-                <div class="bg-gray-800 p-2 rounded hologram">
-                    <p>${'★'.repeat(r.rating)} ${r.text}</p>
-                    <p class="text-sm text-gray-600">Ответ: ${r.reply}</p>
-                </div>
-            `).join('');
-            new Chart(document.querySelector('#deal-chart'), {
+            new Chart(document.getElementById('deal-chart'), {
                 type: 'line',
                 data: {
-                    labels: ['Янв', 'Фев', 'Мар'],
-                    datasets: [{ label: 'Сделки', data: [10, 20, 15], borderColor: '#00D4FF' }]
+                    labels: ['Янв', 'Фев', 'Мар', 'Апр'],
+                    datasets: [{ label: 'Сделки', data: [10, 20, 15, 25], borderColor: '#00D4FF' }]
                 },
-                options: { plugins: { legend: { labels: { color: '#000' } }, tooltip: false }, scales: { x: { ticks: { color: '#333' } }, y: { ticks: { color: '#333' }}}}
+                options: { plugins: { legend: { labels: { color: '#fff' } } }, scales: { x: { ticks: { color: '#fff' } }, y: { ticks: { color: '#fff' } } } }
             });
         }
 
@@ -312,22 +299,9 @@
                 tg.showAlert('Введите сообщение!');
                 return;
             }
-            // Мок-ответ
             tg.showAlert('Сообщение отправлено!');
             closeModal('support');
         }
-
-        // Загрузка топ-Items
-        function loadTopItems() {
-            const items = document.querySelector('#top-items');
-            items.innerHTML = mockTopItems.map(item => `
-                <div class="bg-gray-800 p-3 rounded-lg transform transition-transform hover:scale-105">
-                    <h3 class="text-lg font-semibold">${item.name}</h3>
-                    <p>Цена: ${item.price} ${item.currency}</p>
-                </div>
-            `).join('');
-        }
-        loadTopItems();
 
         // Загрузка новостей
         function loadNews() {
