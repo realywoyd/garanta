@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GarantX for RF Online</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    <style>
+        @keyframes neonPulse {
+            0% { box-shadow: 0 0 5px #FF007A, 0 0 10px #00D4FF, 0 0 15px #8B00FF; }
+            50% { box-shadow: 0 0 15px #FF007A, 0 0 30px #00D4FF, 0 0 45px #8B00FF; }
+            100% { box-shadow: 0 0 5px #FF007A, 0 0 10px #00D4FF, 0 0 15px #8B00FF; }
+        }
+        .neon-button {
+            animation: neonPulse 1.5s infinite;
+            transition: transform 0.2s;
+        }
+        .neon-button:hover {
+            transform: scale(1.05);
+        }
+        .no-copy {
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+        }
+        .gradient-bg {
+            background: #1A1A1A;
+        }
+        #webgl-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+        .hologram {
+            opacity: 0;
+            transform: translateY(20px);
+            animation: hologramFade 0.5s forwards;
+        }
+        @keyframes hologramFade {
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="gradient-bg text-white font-montserrat">
+    <div id="webgl-bg"></div>
+    <div class="container max-w-md mx-auto p-4 relative z-10">
+        <h1 class="text-5xl font-orbitron text-center bg-gradient-to-r from-pink-500 to-cyan-500 bg-clip-text text-transparent mb-2 animate-pulse">GarantX</h1>
+        <h2 class="text-xl font-montserrat text-center text-purple-500 mb-6 hologram">for RF Online</h2>
+        <div class="grid grid-cols-2 gap-4">
+            <button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-3 rounded-lg hologram" onclick="showModal('create-deal')">Создать сделку</button>
+            <button class="neon-button bg-black border-2 border-pink-500 text-pink-500 p-3 rounded-lg hologram" onclick="showModal('deals')">Мои сделки</button>
+            <button class="neon-button bg-black border-2 border-purple-500 text-purple-500 p-3 rounded-lg hologram" onclick="showModal('catalog')">Каталог</button>
+            <button class="neon-button bg-black border-2 border-yellow-500 text-yellow-500 p-3 rounded-lg hologram" onclick="showModal('auctions')">Аукционы</button>
+            <button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-3 rounded-lg hologram" onclick="showModal('support')">Поддержка</button>
+            <button class="neon-button bg-black border-2 border-green-500 text-green-500 p-3 rounded-lg hologram" onclick="showModal('profile')">Профиль</button>
+        </div>
+        <div class="mt-6">
+            <h2 class="text-2xl font-semibold mb-2 hologram">Акции</h2>
+            <div class="bg-gray-800 p-4 rounded-lg animate-pulse hologram">🔥 1% комиссия на аккаунты RF Online!</div>
+        </div>
+        <div class="mt-6">
+            <h2 class="text-2xl font-semibold mb-2 hologram">Топ товары</h2>
+            <div id="top-items" class="grid grid-cols-1 gap-4"></div>
+        </div>
+        <div class="mt-6">
+            <h2 class="text-2xl font-semibold mb-2 hologram">Новости</h2>
+            <div id="news" class="bg-gray-800 p-4 rounded-lg"></div>
+        </div>
+    </div>
+
+    <!-- Модальное окно создания сделки -->
+    <div id="create-deal" class="fixed inset-0 bg-black bg-opacity-80 hidden flex items-center justify-center z-50">
+        <div class="bg-gray-900 p-6 rounded-lg border-2 border-pink-500 w-11/12 max-w-md hologram">
+            <h2 class="text-2xl font-bold mb-4">Новая сделка</h2>
+            <input id="deal-item" type="text" placeholder="Товар (напр., Аккаунт Accretia)" class="w-full p-2 bg-gray-800 border border-cyan-500 rounded mb-4 text-white" list="rf-items">
+            <datalist id="rf-items">
+                <option value="Аккаунт Accretia">
+                <option value="Аккаунт Bellato">
+                <option value="Аккаунт Cora">
+                <option value="Оружие +7">
+                <option value="Броня +6">
+                <option value="100000 CP">
+            </datalist>
+            <input id="deal-price" type="number" placeholder="Цена" class="w-full p-2 bg-gray-800 border border-cyan-500 rounded mb-4 text-white">
+            <select id="deal-currency" class="w-full p-2 bg-gray-800 border border-cyan-500 rounded mb-4 text-white">
+                <option value="₽">RUB</option>
+                <option value="USD">USD</option>
+            </select>
+            <input id="deal-partner" type="text" placeholder="Telegram ID (@username)" class="w-full p-2 bg-gray-800 border border-cyan-500 rounded mb-4 text-white">
+            <input id="deal-time" type="number" placeholder="Срок (часы)" class="w-full p-2 bg-gray-800 border border-cyan-500 rounded mb-4 text-white">
+            <div class="flex justify-end gap-2">
+                <button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded" onclick="createDeal()">Создать</button>
+                <button class="neon-button bg-black border-2 border-pink-500 text-pink-500 p-2 rounded" onclick="closeModal('create-deal')">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно каталога -->
+    <div id="catalog" class="fixed inset-0 bg-black bg-opacity-80 hidden flex items-center justify-center z-50">
+        <div class="bg-gray-900 p-6 rounded-lg border-2 border-purple-500 w-11/12 max-w-md hologram">
+            <h2 class="text-2xl font-bold mb-4">Каталог RF Online</h2>
+            <div class="flex gap-2 mb-4">
+                <select id="filter-category" class="p-2 bg-gray-800 border border-cyan-500 rounded text-white">
+                    <option value="">Все категории</option>
+                    <option value="Аккаунты">Аккаунты</option>
+                    <option value="Валюта">Валюта</option>
+                    <option value="Оружие">Оружие</option>
+                    <option value="Броня">Броня</option>
+                </select>
+                <select id="filter-race" class="p-2 bg-gray-800 border border-cyan-500 rounded text-white">
+                    <option value="">Все расы</option>
+                    <option value="Accretia">Accretia</option>
+                    <option value="Bellato">Bellato</option>
+                    <option value="Cora">Cora</option>
+                </select>
+            </div>
+            <div id="catalog-items" class="space-y-4"></div>
+            <button class="neon-button bg-black border-2 border-pink-500 text-pink-500 p-2 rounded mt-4" onclick="closeModal('catalog')">Закрыть</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно аукционов -->
+    <div id="auctions" class="fixed inset-0 bg-black bg-opacity-80 hidden flex items-center justify-center z-50">
+        <div class="bg-gray-900 p-6 rounded-lg border-2 border-yellow-500 w-11/12 max-w-md hologram">
+            <h2 class="text-2xl font-bold mb-4">Аукционы RF Online</h2>
+            <div id="auction-items" class="space-y-4"></div>
+            <button class="neon-button bg-black border-2 border-pink-500 text-pink-500 p-2 rounded mt-4" onclick="closeModal('auctions')">Закрыть</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно профиля -->
+    <div id="profile" class="fixed inset-0 bg-black bg-opacity-80 hidden flex items-center justify-center z-50">
+        <div class="bg-gray-900 p-6 rounded-lg border-2 border-cyan-500 w-11/12 max-w-md hologram">
+            <h2 class="text-2xl font-bold mb-4">Профиль</h2>
+            <div class="flex items-center mb-4">
+                <div id="avatar" class="w-16 h-16 rounded-full border-2 border-pink-500 mr-4"></div>
+                <div>
+                    <p>Пользователь: <span id="user-name"></span></p>
+                    <p>Рейтинг: <span id="user-rating"></span></p>
+                </div>
+            </div>
+            <canvas id="deal-chart" class="mb-4"></canvas>
+            <p>Достижения:</p>
+            <div id="achievements" class="grid grid-cols-3 gap-2 mb-4"></div>
+            <p>Отзывы:</p>
+            <div id="reviews" class="space-y-2 mb-4"></div>
+            <div class="flex justify-end gap-2">
+                <button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded" onclick="closeModal('profile')">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно поддержки -->
+    <div id="support" class="fixed inset-0 bg-black bg-opacity-80 hidden flex items-center justify-center z-50">
+        <div class="bg-gray-900 p-6 rounded-lg border-2 border-green-500 w-11/12 max-w-md hologram">
+            <h2 class="text-2xl font-bold mb-4">Поддержка</h2>
+            <textarea id="support-message" placeholder="Опишите проблему..." class="w-full p-2 bg-gray-800 border border-cyan-500 rounded mb-4 text-white"></textarea>
+            <div class="flex justify-end gap-2">
+                <button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded" onclick="sendSupportMessage()">Отправить</button>
+                <button class="neon-button bg-black border-2 border-pink-500 text-pink-500 p-2 rounded" onclick="closeModal('support')">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+
+        // Проверка авторизации Telegram
+        if (!tg.initDataUnsafe || !tg.initDataUnsafe.user) {
+            document.body.innerHTML = '<h1 class="text-center text-2xl mt-10">Ошибка: Откройте приложение через Telegram</h1>';
+            throw new Error('Telegram authorization failed');
+        }
+
+        // WebGL фон
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('webgl-bg'), alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        const geometry = new THREE.BufferGeometry();
+        const vertices = new Float32Array(2000).map(() => Math.random() * 100 - 50);
+        geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+        const material = new THREE.PointsMaterial({ color: 0x00D4FF, size: 0.3 });
+        const points = new THREE.Points(geometry, material);
+        scene.add(points);
+        camera.position.z = 50;
+        function animate() {
+            requestAnimationFrame(animate);
+            points.rotation.y += 0.005;
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Haptic Feedback
+        function vibrate() {
+            if (navigator.vibrate) navigator.vibrate(50);
+        }
+        document.querySelectorAll('.neon-button').forEach(btn => btn.addEventListener('click', vibrate));
+
+        function showModal(id) {
+            const modal = document.getElementById(id);
+            if (modal) {
+                modal.style.display = 'flex';
+                gsap.from(`#${id} .hologram`, { opacity: 0, y: 20, stagger: 0.1 });
+                if (id === 'catalog') loadCatalog();
+                if (id === 'auctions') loadAuctions();
+                if (id === 'profile') loadProfile();
+            }
+        }
+
+        function closeModal(id) {
+            const modal = document.getElementById(id);
+            if (modal) {
+                gsap.to(`#${id} .hologram`, {
+                    opacity: 0,
+                    y: 20,
+                    stagger: 0.1,
+                    onComplete: () => modal.style.display = 'none'
+                });
+            }
+        }
+
+        async function createDeal() {
+            const item = document.getElementById('deal-item').value;
+            const price = document.getElementById('deal-price').value;
+            const currency = document.getElementById('deal-currency').value;
+            const partner = document.getElementById('deal-partner').value;
+            const time = document.getElementById('deal-time').value;
+            if (!item || !price || !partner || !time || !currency) {
+                tg.showAlert('Заполните все поля!');
+                return;
+            }
+            if (!partner.startsWith('@')) {
+                tg.showAlert('Введите корректный Telegram ID (напр., @username)');
+                return;
+            }
+            try {
+                const res = await fetch('/api/deal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ item, price, currency, partner, time, user: tg.initDataUnsafe.user.id })
+                });
+                if (!res.ok) throw new Error('Ошибка сервера');
+                const data = await res.json();
+                tg.showAlert(`Сделка создана! ID: ${data.dealId}`);
+                closeModal('create-deal');
+            } catch (error) {
+                tg.showAlert('Ошибка при создании сделки: ' + error.message);
+            }
+        }
+
+        async function loadCatalog() {
+            const category = document.getElementById('filter-category').value;
+            const race = document.getElementById('filter-race').value;
+            try {
+                const res = await fetch(`/api/catalog?category=${category}&race=${race}`);
+                if (!res.ok) throw new Error('Ошибка загрузки каталога');
+                const items = await res.json();
+                const catalog = document.getElementById('catalog-items');
+                catalog.innerHTML = items.map(item => `
+                    <div class="bg-gray-800 p-4 rounded-lg transform transition-transform hover:rotate-3 hologram">
+                        <h3 class="text-lg font-semibold">${item.name}</h3>
+                        <p>Цена: ${item.price} ${item.currency}</p>
+                        <p>Рейтинг: ${'★'.repeat(item.rating)}</p>
+                        ${item.race ? `<p>Раса: ${item.race}</p>` : ''}
+                        <button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded mt-2" onclick="createDealFromCatalog('${item.name}', ${item.price}, '${item.currency}')">Купить</button>
+                    </div>
+                `).join('');
+            } catch (error) {
+                tg.showAlert('Ошибка загрузки каталога: ' + error.message);
+            }
+        }
+
+        async function loadAuctions() {
+            try {
+                const res = await fetch('/api/auctions');
+                if (!res.ok) throw new Error('Ошибка загрузки аукционов');
+                const items = await res.json();
+                const auctions = document.getElementById('auction-items');
+                auctions.innerHTML = items.map(item => `
+                    <div class="bg-gray-800 p-4 rounded-lg transform transition-transform hover:rotate-3 hologram">
+                        <h3 class="text-lg font-semibold">${item.name}</h3>
+                        <p>Текущая ставка: ${item.currentBid} ${item.currency}</p>
+                        <p>Осталось: ${item.timeLeft}</p>
+                        ${item.race ? `<p>Раса: ${item.race}</p>` : ''}
+                        <button class="neon-button bg-black border-2 border-yellow-500 text-yellow-500 p-2 rounded mt-2" onclick="placeBid('${item._id}', ${item.currentBid + 100}, '${item.currency}')">Ставка</button>
+                    </div>
+                `).join('');
+            } catch (error) {
+                tg.showAlert('Ошибка загрузки аукционов: ' + error.message);
+            }
+        }
+
+        function createDealFromCatalog(item, price, currency) {
+            document.getElementById('deal-item').value = item;
+            document.getElementById('deal-price').value = price;
+            document.getElementById('deal-currency').value = currency;
+            closeModal('catalog');
+            showModal('create-deal');
+        }
+
+        async function placeBid(auctionId, bid, currency) {
+            try {
+                const res = await fetch('/api/auction/bid', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ auctionId, bid, currency, user: tg.initDataUnsafe.user.id })
+                });
+                if (!res.ok) throw new Error('Ошибка ставки');
+                const data = await res.json();
+                tg.showAlert(`Ставка ${bid} ${currency} принята!`);
+                loadAuctions();
+            } catch (error) {
+                tg.showAlert('Ошибка при размещении ставки: ' + error.message);
+            }
+        }
+
+        async function loadTopItems() {
+            try {
+                const res = await fetch('/api/catalog?top=5');
+                if (!res.ok) throw new Error('Ошибка загрузки топ-товаров');
+                const items = await res.json();
+                const topItems = document.getElementById('top-items');
+                topItems.innerHTML = items.map(item => `
+                    <div class="bg-gray-800 p-4 rounded-lg transform transition-transform hover:rotate-3 hologram">
+                        <h3 class="text-lg font-semibold">${item.name}</h3>
+                        <p>Цена: ${item.price} ${item.currency}</p>
+                        <button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded mt-2" onclick="createDealFromCatalog('${item.name}', ${item.price}, '${item.currency}')">Купить</button>
+                    </div>
+                `).join('');
+            } catch (error) {
+                tg.showAlert('Ошибка загрузки топ-товаров: ' + error.message);
+            }
+        }
+        loadTopItems();
+
+        async function loadNews() {
+            try {
+                const res = await fetch('/api/news');
+                if (!res.ok) throw new Error('Ошибка загрузки новостей');
+                const news = await res.json();
+                document.getElementById('news').innerHTML = news.map(n => `<p class="hologram">${n.text}</p>`).join('');
+            } catch (error) {
+                tg.showAlert('Ошибка загрузки новостей: ' + error.message);
+            }
+        }
+        loadNews();
+
+        async function loadProfile() {
+            try {
+                document.getElementById('user-name').innerText = tg.initDataUnsafe.user.username || 'Аноним';
+                document.getElementById('user-rating').innerText = '★★★★★';
+                document.getElementById('avatar').style.backgroundImage = `url(${tg.initDataUnsafe.user.photo_url || 'https://via.placeholder.com/64'})`;
+                const res = await fetch(`/api/user/${tg.initDataUnsafe.user.id}`);
+                if (!res.ok) throw new Error('Ошибка загрузки профиля');
+                const user = await res.json();
+                document.getElementById('achievements').innerHTML = user.achievements.map(a => `
+                    <div class="bg-gray-800 p-2 rounded hologram">${a}</div>
+                `).join('');
+                document.getElementById('reviews').innerHTML = user.reviews.map(r => `
+                    <div class="bg-gray-800 p-2 rounded hologram">
+                        <p>${'★'.repeat(r.rating)} ${r.text}</p>
+                        <p class="text-sm text-gray-400">Ответ: ${r.reply}</p>
+                    </div>
+                `).join('');
+                new Chart(document.getElementById('deal-chart'), {
+                    type: 'line',
+                    data: {
+                        labels: ['Янв', 'Фев', 'Мар', 'Апр'],
+                        datasets: [{ label: 'Сделки', data: [10, 20, 15, 25], borderColor: '#00D4FF' }]
+                    },
+                    options: { plugins: { legend: { labels: { color: '#fff' } } }, scales: { x: { ticks: { color: '#fff' } }, y: { ticks: { color: '#fff' } } } }
+                });
+            } catch (error) {
+                tg.showAlert('Ошибка загрузки профиля: ' + error.message);
+            }
+        }
+
+        async function sendSupportMessage() {
+            const message = document.getElementById('support-message').value;
+            if (!message) {
+                tg.showAlert('Введите сообщение!');
+                return;
+            }
+            try {
+                const res = await fetch('/api/support', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message, user: tg.initDataUnsafe.user.id })
+                });
+                if (!res.ok) throw new Error('Ошибка отправки сообщения');
+                tg.showAlert('Сообщение отправлено!');
+                closeModal('support');
+            } catch (error) {
+                tg.showAlert('Ошибка отправки сообщения: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>
