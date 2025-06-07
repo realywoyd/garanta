@@ -116,8 +116,10 @@
                 <div>
                     <p>Пользователь: <span id="user-name"></span></p>
                     <p>Рейтинг: <span id="user-rating"></span></p>
+                    <p>Баланс: <span id="user-balance">0 ₽</span></p>
                 </div>
             </div>
+            <button class="neon-button bg-black border-2 border-yellow-500 text-yellow-500 p-2 rounded mb-4" onclick="showModal('withdraw')">Вывести средства</button>
             <canvas id="deal-chart" class="mb-4"></canvas>
             <p>Достижения:</p>
             <div id="achievements" class="grid grid-cols-3 gap-2 mb-4"></div>
@@ -125,7 +127,31 @@
             <div id="reviews" class="space-y-2 mb-4">Нет отзывов</div>
             <div class="flex justify-end gap-2">
                 <button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded" onclick="closeModal('profile')">Закрыть</button>
+                <button class="neon-button bg-black border-2 border-purple-500 text-purple-500 p-2 rounded" onclick="showModal('admin-panel')" id="admin-button" style="display: none;">Админ-панель</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно вывода средств -->
+    <div id="withdraw" class="modal fixed inset-0 bg-black bg-opacity-80 items-center justify-center">
+        <div class="bg-gray-900 p-6 rounded-lg border-2 border-yellow-500 w-11/12 max-w-md hologram">
+            <h2 class="text-2xl font-bold mb-4">Вывести средства</h2>
+            <input id="withdraw-amount" type="number" placeholder="Сумма (₽)" step="0.01" class="w-full p-2 bg-gray-800 border border-cyan-500 rounded mb-4 text-white">
+            <input id="withdraw-card" type="text" placeholder="Номер карты" class="w-full p-2 bg-gray-800 border border-cyan-500 rounded mb-4 text-white">
+            <div class="flex justify-end gap-2">
+                <button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded" onclick="requestWithdraw()">Запросить</button>
+                <button class="neon-button bg-black border-2 border-pink-500 text-pink-500 p-2 rounded" onclick="closeModal('withdraw')">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно админ-панели -->
+    <div id="admin-panel" class="modal fixed inset-0 bg-black bg-opacity-80 items-center justify-center">
+        <div class="bg-gray-900 p-6 rounded-lg border-2 border-purple-500 w-11/12 max-w-md hologram">
+            <h2 class="text-2xl font-bold mb-4">Админ-панель</h2>
+            <h3 class="text-lg mb-2">Сделки на проверку</h3>
+            <div id="admin-deals" class="space-y-4"></div>
+            <button class="neon-button bg-black border-2 border-pink-500 text-pink-500 p-2 rounded mt-4" onclick="closeModal('admin-panel')">Закрыть</button>
         </div>
     </div>
 
@@ -155,11 +181,13 @@
         const mockProfile = {
             username: tg.initDataUnsafe.user.username || "Аноним",
             rating: "★★★★★",
-            achievements: ["Новичок", "RF-торговец"]
+            achievements: ["Новичок", "RF-торговец"],
+            isAdmin: tg.initDataUnsafe.user.id === 123 // Мок: ID 123 — админ
         };
 
         // Мок-данные для новостей
         const mockNews = [
+            { text: "@CyberTrader продал аккаунт RF Online за 5000₽!" },
             { text: "Новая акция: 1% комиссия на игровые ценности!" }
         ];
 
@@ -197,6 +225,7 @@
                 gsap.from(`#${id} .hologram`, { opacity: 0, y: 20, stagger: 0.1 });
                 if (id === 'deals') loadDeals();
                 if (id === 'profile') loadProfile();
+                if (id === 'admin-panel') loadAdminPanel();
             }
         }
 
@@ -234,10 +263,11 @@
                 item,
                 price: parseFloat(price),
                 currency,
-                partner,
-                status: 'Активна',
-                userId: tg.initDataUnsafe.user.id,
-                createdAt: new Date().toISOString()
+                sellerId: tg.initDataUnsafe.user.id,
+                buyerId: partner, // Мок: партнер как ID
+                status: 'created',
+                createdAt: new Date().toISOString(),
+                paymentProof: null
             };
             const deals = JSON.parse(localStorage.getItem('deals') || '[]');
             deals.push(deal);
@@ -250,28 +280,168 @@
         // Загрузка сделок
         function loadDeals() {
             const dealList = document.getElementById('deal-list');
-            const deals = JSON.parse(localStorage.getItem('deals') || '[]').filter(deal => deal.userId === tg.initDataUnsafe.user.id);
-            dealList.innerHTML = deals.length ? deals.map((deal, index) => `
+            const deals = JSON.parse(localStorage.getItem('deals') || '[]').filter(
+                deal => deal.sellerId === tg.initDataUnsafe.user.id || deal.buyerId === `@${tg.initDataUnsafe.user.username}`
+            );
+            dealList.innerHTML = deals.length ? deals.map((deal, index) => {
+                const isSeller = deal.sellerId === tg.initDataUnsafe.user.id;
+                const isBuyer = deal.buyerId === `@${tg.initDataUnsafe.user.username}`;
+                let actions = '';
+                if (isBuyer && deal.status === 'created') {
+                    actions = `
+                        <input id="proof-${deal.id}" type="text" placeholder="Ссылка на чек" class="w-full p-2 bg-gray-800 border border-cyan-500 rounded mb-2 text-white">
+                        <button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded" onclick="submitPaymentProof(${index}, '${deal.id}')">Отправить чек</button>
+                    `;
+                } else if (isSeller && deal.status === 'payment_verified') {
+                    actions = `<button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded" onclick="transferGoods(${index})">Передать товар</button>`;
+                } else if (isBuyer && deal.status === 'goods_transferred') {
+                    actions = `<button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded" onclick="confirmGoods(${index})">Подтвердить получение</button>`;
+                } else if (isSeller && deal.status === 'buyer_confirmed') {
+                    actions = `<button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded" onclick="confirmDeal(${index})">Завершить сделку</button>`;
+                }
+                if (deal.status !== 'completed' && deal.status !== 'canceled') {
+                    actions += `<button class="neon-button bg-black border-2 border-red-500 text-red-500 p-2 rounded mt-2" onclick="cancelDeal(${index})">Отменить</button>`;
+                }
+                return `
+                    <div class="bg-gray-800 p-4 rounded-lg hologram">
+                        <p><strong>Товар:</strong> ${deal.item}</p>
+                        <p><strong>Цена:</strong> ${deal.price} ${deal.currency}</p>
+                        <p><strong>Продавец:</strong> ${deal.sellerId}</p>
+                        <p><strong>Покупатель:</strong> ${deal.buyerId}</p>
+                        <p><strong>Статус:</strong> ${getStatusText(deal.status)}</p>
+                        ${deal.paymentProof ? `<p><strong>Чек:</strong> ${deal.paymentProof}</p>` : ''}
+                        <p><strong>Дата:</strong> ${new Date(deal.createdAt).toLocaleString()}</p>
+                        ${actions}
+                    </div>
+                `;
+            }).join('') : '<p class="hologram text-center">Сделок нет</p>';
+        }
+
+        // Текстовое описание статуса
+        function getStatusText(status) {
+            const statusMap = {
+                created: 'Ожидает оплаты',
+                payment_pending: 'Ожидает проверки оплаты',
+                payment_verified: 'Оплата подтверждена',
+                goods_transferred: 'Товар передан',
+                buyer_confirmed: 'Покупатель подтвердил',
+                completed: 'Завершена',
+                canceled: 'Отменена'
+            };
+            return statusMap[status] || status;
+        }
+
+        // Отправка чека покупателем
+        function submitPaymentProof(index, dealId) {
+            const proof = document.getElementById(`proof-${dealId}`).value;
+            if (!proof) {
+                tg.showAlert('Укажите ссылку на чек!');
+                return;
+            }
+            const deals = JSON.parse(localStorage.getItem('deals') || '[]');
+            if (deals[index].buyerId === `@${tg.initDataUnsafe.user.username}` && deals[index].status === 'created') {
+                deals[index].status = 'payment_pending';
+                deals[index].paymentProof = proof;
+                localStorage.setItem('deals', JSON.stringify(deals));
+                tg.showAlert('Чек отправлен на проверку!');
+                loadDeals();
+            }
+        }
+
+        // Подтверждение оплаты админом
+        function verifyPayment(index) {
+            const deals = JSON.parse(localStorage.getItem('deals') || '[]');
+            if (deals[index].status === 'payment_pending') {
+                deals[index].status = 'payment_verified';
+                localStorage.setItem('deals', JSON.stringify(deals));
+                tg.showAlert('Оплата подтверждена!');
+                loadAdminPanel();
+            }
+        }
+
+        // Передача товара продавцом
+        function transferGoods(index) {
+            const deals = JSON.parse(localStorage.getItem('deals') || '[]');
+            if (deals[index].sellerId === tg.initDataUnsafe.user.id && deals[index].status === 'payment_verified') {
+                deals[index].status = 'goods_transferred';
+                localStorage.setItem('deals', JSON.stringify(deals));
+                tg.showAlert('Товар передан покупателю!');
+                loadDeals();
+            }
+        }
+
+        // Подтверждение получения покупателем
+        function confirmGoods(index) {
+            const deals = JSON.parse(localStorage.getItem('deals') || '[]');
+            if (deals[index].buyerId === `@${tg.initDataUnsafe.user.username}` && deals[index].status === 'goods_transferred') {
+                deals[index].status = 'buyer_confirmed';
+                localStorage.setItem('deals', JSON.stringify(deals));
+                tg.showAlert('Получение товара подтверждено!');
+                loadDeals();
+            }
+        }
+
+        // Завершение сделки продавцом
+        function confirmDeal(index) {
+            const deals = JSON.parse(localStorage.getItem('deals') || '[]');
+            if (deals[index].sellerId === tg.initDataUnsafe.user.id && deals[index].status === 'buyer_confirmed') {
+                deals[index].status = 'completed';
+                // Зачисление на баланс продавца
+                const balances = JSON.parse(localStorage.getItem('balances') || '{}');
+                balances[deals[index].sellerId] = (balances[deals[index].sellerId] || 0) + deals[index].price;
+                localStorage.setItem('balances', JSON.stringify(balances));
+                localStorage.setItem('deals', JSON.stringify(deals));
+                tg.showAlert(`Сделка завершена! ${deals[index].price} ${deals[index].currency} зачислены на баланс.`);
+                loadDeals();
+            }
+        }
+
+        // Отмена сделки
+        function cancelDeal(index) {
+            const deals = JSON.parse(localStorage.getItem('deals') || '[]');
+            if (deals[index].sellerId === tg.initDataUnsafe.user.id || deals[index].buyerId === `@${tg.initDataUnsafe.user.username}`) {
+                deals[index].status = 'canceled';
+                localStorage.setItem('deals', JSON.stringify(deals));
+                tg.showAlert('Сделка отменена!');
+                loadDeals();
+            }
+        }
+
+        // Загрузка админ-панели
+        function loadAdminPanel() {
+            const adminDeals = document.getElementById('admin-deals');
+            const deals = JSON.parse(localStorage.getItem('deals') || '[]').filter(deal => deal.status === 'payment_pending');
+            adminDeals.innerHTML = deals.length ? deals.map((deal, index) => `
                 <div class="bg-gray-800 p-4 rounded-lg hologram">
                     <p><strong>Товар:</strong> ${deal.item}</p>
                     <p><strong>Цена:</strong> ${deal.price} ${deal.currency}</p>
-                    <p><strong>Партнер:</strong> ${deal.partner}</p>
-                    <p><strong>Статус:</strong> ${deal.status}</p>
-                    <p><strong>Дата:</strong> ${new Date(deal.createdAt).toLocaleString()}</p>
-                    <button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded mt-2"
-                        onclick="toggleDealStatus(${index})">${deal.status === 'Активна' ? 'Завершить' : 'Активировать'}</button>
+                    <p><strong>Продавец:</strong> ${deal.sellerId}</p>
+                    <p><strong>Покупатель:</strong> ${deal.buyerId}</p>
+                    <p><strong>Чек:</strong> ${deal.paymentProof}</p>
+                    <button class="neon-button bg-black border-2 border-cyan-500 text-cyan-500 p-2 rounded" onclick="verifyPayment(${index})">Подтвердить оплату</button>
                 </div>
-            `).join('') : '<p class="hologram text-center">Сделок нет</p>';
+            `).join('') : '<p class="hologram text-center">Нет сделок на проверку</p>';
         }
 
-        // Переключение статуса сделки
-        function toggleDealStatus(index) {
-            const deals = JSON.parse(localStorage.getItem('deals') || '[]');
-            if (deals[index].userId === tg.initDataUnsafe.user.id) {
-                deals[index].status = deals[index].status === 'Активна' ? 'Завершена' : 'Активна';
-                localStorage.setItem('deals', JSON.stringify(deals));
-                loadDeals();
+        // Запрос вывода средств
+        function requestWithdraw() {
+            const amount = parseFloat(document.getElementById('withdraw-amount').value);
+            const card = document.getElementById('withdraw-card').value;
+            if (!amount || !card) {
+                tg.showAlert('Заполните все поля!');
+                return;
             }
+            const balances = JSON.parse(localStorage.getItem('balances') || '{}');
+            const userBalance = balances[tg.initDataUnsafe.user.id] || 0;
+            if (amount > userBalance) {
+                tg.showAlert('Недостаточно средств на балансе!');
+                return;
+            }
+            balances[tg.initDataUnsafe.user.id] -= amount;
+            localStorage.setItem('balances', JSON.stringify(balances));
+            tg.showAlert(`Запрос на вывод ${amount} ₽ на карту ${card} отправлен!`);
+            closeModal('withdraw');
+            loadProfile();
         }
 
         // Загрузка профиля
@@ -279,6 +449,8 @@
             document.getElementById('user-name').innerText = mockProfile.username;
             document.getElementById('user-rating').innerText = mockProfile.rating;
             document.getElementById('avatar').style.backgroundImage = `url(${tg.initDataUnsafe.user.photo_url || 'https://via.placeholder.com/64'})`;
+            const balances = JSON.parse(localStorage.getItem('balances') || '{}');
+            document.getElementById('user-balance').innerText = `${balances[tg.initDataUnsafe.user.id] || 0} ₽`;
             document.getElementById('achievements').innerHTML = mockProfile.achievements.map(a => `
                 <div class="bg-gray-800 p-2 rounded hologram">${a}</div>
             `).join('');
@@ -290,6 +462,7 @@
                 },
                 options: { plugins: { legend: { labels: { color: '#fff' } } }, scales: { x: { ticks: { color: '#fff' } }, y: { ticks: { color: '#fff' } } } }
             });
+            document.getElementById('admin-button').style.display = mockProfile.isAdmin ? 'block' : 'none';
         }
 
         // Отправка сообщения в поддержку
